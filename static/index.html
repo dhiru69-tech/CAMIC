@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FaceShape Local Tester</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>FaceShape — Local Tester</h1>
+    <p class="muted">Local only — consent required. Camera & microphone check + face symmetry & shape.</p>
+  </header>
+
+  <main>
+    <section id="consent">
+      <div class="card">
+        <h2>Consent</h2>
+        <p>This app runs locally and uses your camera and microphone only for testing on this machine. No images or audio are uploaded unless you press "Save Results".</p>
+        <button id="btn-consent">I consent — start camera</button>
+      </div>
+    </section>
+
+    <section id="camera-section" class="hidden">
+      <div class="video-wrap">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+      </div>
+
+      <div class="controls">
+        <button id="btn-capture">Capture & Analyze</button>
+        <button id="btn-toggle-audio">Toggle Mic Permission</button>
+        <button id="btn-save" disabled>Save Results (local)</button>
+        <button id="btn-reset">Reset</button>
+      </div>
+
+      <div id="results" class="card">
+        <h3>Analysis</h3>
+        <div id="score">No data yet</div>
+        <ul id="details"></ul>
+      </div>
+
+      <div id="device" class="card">
+        <h3>Device Info</h3>
+        <pre id="device-info">—</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <small>For local testing only. See README for privacy & model download instructions.</small>
+  </footer>
+</body>
+</html>

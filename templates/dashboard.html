@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard — local</title>
+  <style>body{font-family:Arial;background:#111;color:#eee;padding:1rem} pre{background:#222;padding:1rem;border-radius:6px}</style>
+</head>
+<body>
+  <h1>Saved Results (local)</h1>
+  {% for r in results %}
+    <div style="margin:1rem 0;padding:1rem;background:#1a1a1a;border-radius:6px;">
+      <strong>{{ r.session_id }} — {{ r.timestamp }}</strong>
+      <pre>{{ r | tojson(indent=2) }}</pre>
+    </div>
+  {% else %}
+    <p>No results yet.</p>
+  {% endfor %}
+</body>
+</html>

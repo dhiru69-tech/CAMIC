@@ -1,0 +1,15 @@
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; margin: 0; background: #111; color: #eee; }
+header { padding: 1rem; background: linear-gradient(90deg,#222,#111); }
+h1 { margin: 0; font-size: 1.2rem; }
+.muted { color: #aaa; font-size: .9rem; }
+main { padding: 1rem; display: grid; gap: 1rem; }
+.card { background: #1a1a1a; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+.video-wrap { position: relative; max-width: 640px; }
+video { width: 100%; border-radius: 8px; display: block; }
+canvas { position: absolute; left: 0; top: 0; }
+.controls { display:flex; gap: .5rem; margin-top: .5rem; }
+button { padding: .5rem .8rem; background: #2b6; border: none; border-radius: 6px; color: #002; cursor: pointer; }
+button:disabled { opacity: .4; cursor: not-allowed; }
+.hidden { display: none; }
+#results { max-width: 640px; }
+footer { padding: .5rem 1rem; color: #888; font-size: .85rem; }
