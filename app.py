@@ -8,12 +8,15 @@ from pathlib import Path
 app = Flask(__name__, static_folder='static', template_folder='templates')
 DEFAULT_KEY = "localkey"
 
+
 def ensure_results_dir(path):
     Path(path).mkdir(parents=True, exist_ok=True)
+
 
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
+
 
 @app.route('/dashboard')
 def dashboard():
@@ -27,9 +30,10 @@ def dashboard():
             with open(p, 'r') as f:
                 try:
                     results.append(json.load(f))
-                except:
+                except Exception:
                     pass
     return render_template('dashboard.html', results=results)
+
 
 @app.route('/save_results', methods=['POST'])
 def save_results():
@@ -42,11 +46,24 @@ def save_results():
     fname = results_dir / f"{data['session_id']}_{ts}.json"
     with open(fname, 'w') as f:
         json.dump(data, f, indent=2)
+
+    # Concise terminal logging for local observer
+    try:
+        metrics = data.get('metrics', {})
+        sym_score = metrics.get('symmetry', {}).get('score') if isinstance(metrics.get('symmetry'), dict) else None
+        shape = metrics.get('face_shape', {}).get('shape') if isinstance(metrics.get('face_shape'), dict) else None
+        now = datetime.datetime.utcnow().isoformat() + 'Z'
+        print(f"[{now}] session={data.get('session_id')} symmetry={sym_score} shape={shape} file={fname}")
+    except Exception:
+        pass
+
     return jsonify({'status': 'ok', 'path': str(fname)}), 200
+
 
 @app.route('/static/<path:path>')
 def static_proxy(path):
     return send_from_directory('static', path)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Local face-shape tester')

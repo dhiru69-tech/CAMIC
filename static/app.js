@@ -1,247 +1,181 @@
-const MODELS_PATH = '/static/models'  // recommended: download models into this folder
+// Client-side: improved UI, frame-averaging, median score, minimal saved payload
+const MODELS_PATH = '/static/models';
+const FRAMES_TO_CAPTURE = 5; // number of frames to average
+const FRAME_INTERVAL_MS = 150; // time between frames
+
 let video = null;
 let overlay = null;
 let ctx = null;
 let stream = null;
 let audioStream = null;
-let lastMetrics = null;
 let sessionId = null;
+let lastMetrics = null;
 
 function $(id){ return document.getElementById(id); }
 
-async function loadModels() {
-  // face-api.js models: tiny_face_detector + face_landmark_68
+function makeSessionId() { return 's_' + Math.random().toString(36).slice(2,10); }
+
+async function loadModels(){
   await faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_PATH);
   await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODELS_PATH);
   console.log('Models loaded');
 }
 
-function makeSessionId() {
-  return 's_' + Math.random().toString(36).slice(2,10);
+function showPlaceholder(show){
+  const ph = document.getElementById('placeholder');
+  if(!ph) return;
+  ph.style.display = show ? 'block' : 'none';
 }
 
-function show(el){ el.classList.remove('hidden'); }
-function hide(el){ el.classList.add('hidden'); }
-
-async function startCamera() {
+async function startCamera(){
   video = $('video');
   overlay = $('overlay');
   ctx = overlay.getContext('2d');
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
     video.srcObject = stream;
     await video.play();
-    overlay.width = video.videoWidth;
-    overlay.height = video.videoHeight;
+    overlay.width = video.videoWidth || 640;
+    overlay.height = video.videoHeight || 360;
     sessionId = makeSessionId();
+    $('session-id').textContent = sessionId;
+    $('btn-capture').disabled = false;
     $('btn-save').disabled = true;
     await loadModels();
-    console.log('Camera started');
-  } catch (e) {
-    alert('Camera start failed: ' + e.message);
+    showPlaceholder(false);
+  }catch(e){
+    alert('Camera error: '+e.message);
     console.error(e);
   }
 }
 
-async function requestMic() {
-  try {
+async function requestMic(){
+  try{
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // quick level meter for user feedback:
+    // quick level test
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioCtx.createMediaStreamSource(audioStream);
     const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
+    analyser.fftSize = 256; source.connect(analyser);
     const data = new Uint8Array(analyser.frequencyBinCount);
-    let level = 0;
-    const meter = setInterval(()=> {
-      analyser.getByteFrequencyData(data);
-      let sum = 0;
-      for(let i=0;i<data.length;i++) sum += data[i];
-      level = sum / data.length;
-      // update UI
-      $('device-info').textContent = $('device-info').textContent + ''; // keep
-    }, 200);
-    setTimeout(()=>{ clearInterval(meter); audioCtx.close(); }, 2000);
-    alert('Microphone permission granted (temporary check).');
-  } catch (e) {
-    alert('Microphone unavailable or permission denied.');
+    let sum = 0; analyser.getByteFrequencyData(data);
+    for(let i=0;i<data.length;i++) sum+=data[i];
+    audioCtx.close();
+    alert('Microphone available');
+  }catch(e){
+    alert('Microphone permission denied or unavailable');
   }
 }
 
-function drawResults(box, landmarks) {
+function drawOverlay(detection){
+  if(!ctx) return;
   ctx.clearRect(0,0,overlay.width, overlay.height);
-  // draw box
-  ctx.strokeStyle = '#00ff00';
-  ctx.lineWidth = 2;
+  if(!detection) return;
+  const box = detection.detection.box;
+  ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2;
   ctx.strokeRect(box.x, box.y, box.width, box.height);
-  // draw landmarks
-  ctx.fillStyle = '#ff0';
-  landmarks.forEach(p=>{
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 2, 0, Math.PI*2);
-    ctx.fill();
-  });
+  const points = detection.landmarks.positions;
+  ctx.fillStyle = '#ffd54f';
+  points.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x, p.y, 2,0,Math.PI*2); ctx.fill(); });
 }
 
-function computeSymmetry(landmarks) {
-  // landmarks: array of {x,y} 68 points
-  // heuristic: compute midX as average eye centers
-  function avg(indices){
-    let sx=0, sy=0;
-    indices.forEach(i=>{ sx += landmarks[i].x; sy += landmarks[i].y;});
-    return {x: sx/indices.length, y: sy/indices.length};
-  }
-  const leftEye = avg([36,37,38,39,40,41]);
-  const rightEye = avg([42,43,44,45,46,47]);
+function avgIndices(landmarks, indices){
+  let sx=0, sy=0; indices.forEach(i=>{ sx+=landmarks[i].x; sy+=landmarks[i].y; });
+  return {x: sx/indices.length, y: sy/indices.length};
+}
+
+function computeSymmetryFromLandmarks(landmarks){
+  const leftEye = avgIndices(landmarks,[36,37,38,39,40,41]);
+  const rightEye = avgIndices(landmarks,[42,43,44,45,46,47]);
   const midX = (leftEye.x + rightEye.x)/2;
-
-  // pairs (approx symmetric pairs) - indices from 0..67
-  const pairs = [
-    [17,26],[18,25],[19,24],[20,23],[21,22],
-    [36,45],[37,44],[38,43],[39,42],[40,47],[41,46],
-    [31,35],[32,34],
-    [48,54],[49,53],[50,52],
-    [3,13],[4,12],[5,11]
-  ];
-
-  const faceWidth = Math.abs(Math.max(...landmarks.map(p=>p.x)) - Math.min(...landmarks.map(p=>p.x))) || 1;
-  let dsum = 0;
+  const pairs = [[17,26],[18,25],[19,24],[20,23],[21,22],[36,45],[37,44],[38,43],[39,42],[40,47],[41,46],[31,35],[32,34],[48,54],[49,53],[50,52],[3,13],[4,12],[5,11]];
+  const xs = landmarks.map(p=>p.x);
+  const faceWidth = Math.max(...xs) - Math.min(...xs) || 1;
+  let dsum=0;
   pairs.forEach(pair=>{
-    const a = landmarks[pair[0]];
-    const b = landmarks[pair[1]];
-    // reflect b across midX
-    const bx_ref = 2*midX - b.x;
-    const by_ref = b.y;
-    const dx = a.x - bx_ref;
-    const dy = a.y - by_ref;
-    const dist = Math.hypot(dx,dy);
-    dsum += dist / faceWidth; // normalized
+    const a = landmarks[pair[0]]; const b = landmarks[pair[1]];
+    const bx_ref = 2*midX - b.x; const by_ref = b.y;
+    const dx = a.x - bx_ref; const dy = a.y - by_ref; const dist = Math.hypot(dx,dy);
+    dsum += dist/faceWidth;
   });
   const avgNorm = dsum / pairs.length;
-  // heuristic mapping: lower avgNorm -> higher score
-  // scale so typical avgNorm ~ 0.01..0.06 maps sensibly
-  let score = Math.max(0, Math.round(100 - avgNorm * 2000));
-  score = Math.min(100, score);
+  // improved mapping with clamping and sigmoid-like scaling
+  const scaled = Math.max(0, Math.min(1, Math.exp(-avgNorm*200)));
+  const score = Math.round(scaled * 100);
   return {score, avgNorm};
 }
 
-function computeFaceShape(landmarks) {
-  // Very simple heuristic using face height vs jaw/cheek widths
-  const top = landmarks[27]; // approximate top-of-nose bridge
-  const chin = landmarks[8];
-  const leftJaw = landmarks[0];
-  const rightJaw = landmarks[16];
-  const jawWidth = Math.hypot(leftJaw.x - rightJaw.x, leftJaw.y - rightJaw.y);
-  const faceHeight = Math.hypot(top.x - chin.x, top.y - chin.y) || 1;
-  const ratio = jawWidth / faceHeight; // larger -> squarer
-  // cheek width: pts 1 and 15
-  const cheekWidth = Math.hypot(landmarks[1].x - landmarks[15].x, landmarks[1].y - landmarks[15].y);
-  const cheekRatio = cheekWidth / faceHeight;
-
-  let shape = 'Unknown';
-  if (ratio > 0.9) shape = 'Square';
-  else if (ratio > 0.78) shape = 'Round';
-  else if (cheekRatio > 0.6) shape = 'Heart/Oval';
-  else if (faceHeight / jawWidth > 1.5) shape = 'Long/Oblong';
-  else shape = 'Oval';
-
-  return {shape, jawWidth: Math.round(jawWidth), faceHeight: Math.round(faceHeight), ratio: ratio.toFixed(2)};
+function computeFaceShape(landmarks){
+  const top = landmarks[27]; const chin = landmarks[8];
+  const leftJaw = landmarks[0]; const rightJaw = landmarks[16];
+  const jawWidth = Math.hypot(leftJaw.x-rightJaw.x, leftJaw.y-rightJaw.y);
+  const faceHeight = Math.hypot(top.x-chin.x, top.y-chin.y) || 1;
+  const ratio = jawWidth/faceHeight; const cheekWidth = Math.hypot(landmarks[1].x-landmarks[15].x, landmarks[1].y-landmarks[15].y);
+  const cheekRatio = cheekWidth/faceHeight;
+  let shape='Oval';
+  if(ratio>0.92) shape='Square'; else if(ratio>0.82) shape='Round'; else if(cheekRatio>0.62) shape='Heart/Oval'; else if(faceHeight/jawWidth>1.55) shape='Long/Oblong';
+  return {shape, jawWidth:Math.round(jawWidth), faceHeight:Math.round(faceHeight), ratio:ratio.toFixed(2)};
 }
 
-async function analyzeCapture() {
-  if (!video) return;
-  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
-  const result = await faceapi.detectSingleFace(video, options).withFaceLandmarks(true);
-  if (!result) {
-    alert('No face detected — try better light and center your face.');
-    return;
+function median(arr){ const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; }
+
+async function captureFramesAndAnalyze(){
+  if(!video) return alert('Start camera first');
+  const results = [];
+  for(let i=0;i<FRAMES_TO_CAPTURE;i++){
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+    const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks(true);
+    if(detection){
+      drawOverlay(detection);
+      const landmarks = detection.landmarks.positions.map(p=>({x:p.x,y:p.y}));
+      const sym = computeSymmetryFromLandmarks(landmarks);
+      const shape = computeFaceShape(landmarks);
+      results.push({sym,shape,landmarks,box:detection.detection.box});
+    }
+    await new Promise(r=>setTimeout(r, FRAME_INTERVAL_MS));
   }
-  const box = result.detection.box;
-  const landmarks = result.landmarks.positions.map(p=>({x: p.x, y: p.y}));
-  drawResults(box, landmarks);
-  const sym = computeSymmetry(landmarks);
-  const shape = computeFaceShape(landmarks);
-  const scoreText = `Symmetry score: ${sym.score} / 100`;
-  $('score').textContent = scoreText;
-  const details = [
-    `Symmetry normalized error: ${sym.avgNorm.toFixed(4)}`,
-    `Estimated face shape: ${shape.shape}`,
-    `Jaw width: ${shape.jawWidth}px, face height: ${shape.faceHeight}px, ratio: ${shape.ratio}`
-  ];
-  const dlist = $('details');
-  dlist.innerHTML = '';
-  details.forEach(s=>{
-    const li = document.createElement('li'); li.textContent = s; dlist.appendChild(li);
-  });
-  lastMetrics = {
-    session_id: sessionId,
-    timestamp: new Date().toISOString(),
-    symmetry: sym,
-    face_shape: shape,
-    box: box,
-  };
+  if(results.length===0) return alert('No face detected. Try better lighting and center your face.');
+  // compute median symmetry score
+  const scores = results.map(r=>r.sym.score);
+  const avgNorms = results.map(r=>r.sym.avgNorm);
+  const medianScore = median(scores);
+  const medianNorm = median(avgNorms);
+  const finalShape = results[ Math.floor(results.length/2) ].shape; // pick middle frame shape
+  // update UI
+  $('score').textContent = medianScore + ' / 100';
+  $('shape').textContent = finalShape.shape;
+  $('qc').textContent = `Frames: ${results.length} | norm: ${medianNorm.toFixed(4)}`;
+  const details = $('details'); details.innerHTML='';
+  const li1 = document.createElement('li'); li1.textContent = `Symmetry normalized error (median): ${medianNorm.toFixed(4)}`; details.appendChild(li1);
+  const li2 = document.createElement('li'); li2.textContent = `Estimated face shape: ${finalShape.shape}`; details.appendChild(li2);
+  const li3 = document.createElement('li'); li3.textContent = `Jaw width: ${finalShape.jawWidth}px, face height: ${finalShape.faceHeight}px` ; details.appendChild(li3);
+
+  lastMetrics = { session_id: sessionId, timestamp: new Date().toISOString(), metrics: { symmetry: { score: medianScore, avgNorm: medianNorm }, face_shape: finalShape } };
   $('btn-save').disabled = false;
 }
 
-async function saveResultsToServer() {
-  if (!lastMetrics) return alert('No analysis to save yet.');
-  // collect device info
-  const deviceInfo = {
-    ua: navigator.userAgent,
-    platform: navigator.platform,
-    screen: {w: screen.width, h: screen.height},
-    cookies: document.cookie ? document.cookie.split('; ').slice(0,4) : [],
-    battery: null
-  };
-  try {
-    if (navigator.getBattery) {
-      const bat = await navigator.getBattery();
-      deviceInfo.battery = {level: bat.level, charging: bat.charging};
-    }
-  } catch(e){}
-  const payload = { session_id: lastMetrics.session_id, timestamp: lastMetrics.timestamp, metrics: lastMetrics, device_info: deviceInfo };
-  try {
-    const res = await fetch('/save_results', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(payload)
-    });
+async function saveResultsToServer(){
+  if(!lastMetrics) return alert('No analysis to save');
+  const payload = { session_id: lastMetrics.session_id, timestamp: lastMetrics.timestamp, metrics: lastMetrics.metrics, device_info: { ua: navigator.userAgent, platform: navigator.platform, screen: {w:screen.width,h:screen.height} } };
+  try{
+    const res = await fetch('/save_results', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     const j = await res.json();
-    alert('Saved: ' + (j.path || JSON.stringify(j)));
-  } catch (e) {
-    alert('Save failed: ' + e.message);
-  }
+    if(j.status==='ok'){
+      $('last-saved').textContent = new Date().toLocaleString();
+      alert('Saved locally: ' + j.path);
+      $('btn-save').disabled = true;
+    }else{
+      alert('Save failed');
+    }
+  }catch(e){ alert('Save failed: '+e.message); }
 }
 
-function showDeviceInfo() {
-  const info = {
-    ua: navigator.userAgent,
-    platform: navigator.platform,
-    screen: {w: screen.width, h: screen.height},
-    cookies: document.cookie ? document.cookie.split('; ').slice(0,4) : []
-  };
-  $('device-info').textContent = JSON.stringify(info, null, 2);
-}
+function cleanupStreams(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } if(audioStream){ audioStream.getTracks().forEach(t=>t.stop()); audioStream=null; } }
 
-// UI wiring
 window.addEventListener('load', ()=>{
-  $('btn-consent').addEventListener('click', async ()=>{
-    hide($('consent'));
-    show($('camera-section'));
-    await startCamera();
-    showDeviceInfo();
-  });
-  $('btn-capture').addEventListener('click', analyzeCapture);
+  $('btn-consent').addEventListener('click', async ()=>{ await startCamera(); });
+  $('btn-capture').addEventListener('click', async ()=>{ $('btn-capture').disabled=true; await captureFramesAndAnalyze(); $('btn-capture').disabled=false; });
   $('btn-save').addEventListener('click', saveResultsToServer);
   $('btn-toggle-audio').addEventListener('click', requestMic);
-  $('btn-reset').addEventListener('click', ()=>{
-    if (stream) {
-      stream.getTracks().forEach(t=>t.stop());
-    }
-    if (audioStream) {
-      audioStream.getTracks().forEach(t=>t.stop());
-    }
-    location.reload();
-  });
+  $('btn-reset').addEventListener('click', ()=>{ cleanupStreams(); location.reload(); });
 });

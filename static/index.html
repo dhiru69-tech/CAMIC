@@ -1,56 +1,102 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FaceShape Local Tester</title>
+  <title>FaceShape — Local Professional Tester</title>
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <script defer src="/static/app.js"></script>
 </head>
-<body>
-  <header>
-    <h1>FaceShape — Local Tester</h1>
-    <p class="muted">Local only — consent required. Camera & microphone check + face symmetry & shape.</p>
+<body class="bg-light text-dark">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">FaceShape</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav" aria-controls="nav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="nav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link" href="#">Local Test</a></li>
+          <li class="nav-item"><a class="nav-link" href="/dashboard?key=localkey" target="_blank">Dashboard</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <header class="py-4 bg-white shadow-sm">
+    <div class="container d-flex align-items-center gap-3">
+      <img src="/static/logo.svg" alt="logo" width="56" height="56" onerror="this.style.display='none'">
+      <div>
+        <h1 class="h4 mb-0">FaceShape — Professional Local Tester</h1>
+        <p class="text-muted mb-0">Client-side face detection & symmetry scoring. Runs locally — explicit consent required.</p>
+      </div>
+    </div>
   </header>
 
-  <main>
-    <section id="consent">
-      <div class="card">
-        <h2>Consent</h2>
-        <p>This app runs locally and uses your camera and microphone only for testing on this machine. No images or audio are uploaded unless you press "Save Results".</p>
-        <button id="btn-consent">I consent — start camera</button>
-      </div>
-    </section>
+  <main class="container my-4">
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Live Camera</h5>
+            <div class="ratio ratio-16x9 position-relative bg-dark" style="min-height:320px;">
+              <video id="video" autoplay muted playsinline class="w-100 h-100 position-absolute top-0 start-0"></video>
+              <canvas id="overlay" class="position-absolute top-0 start-0"></canvas>
+              <div id="placeholder" class="position-absolute top-50 start-50 translate-middle text-white opacity-50">Click "Start" and allow camera</div>
+            </div>
 
-    <section id="camera-section" class="hidden">
-      <div class="video-wrap">
-        <video id="video" autoplay muted playsinline></video>
-        <canvas id="overlay"></canvas>
-      </div>
+            <div class="mt-3 d-flex gap-2">
+              <button id="btn-consent" class="btn btn-primary"><i class="fa fa-camera"></i> Start (Consent)</button>
+              <button id="btn-capture" class="btn btn-success" disabled><i class="fa fa-magic"></i> Capture & Analyze</button>
+              <button id="btn-toggle-audio" class="btn btn-outline-secondary"><i class="fa fa-microphone"></i> Mic Check</button>
+              <button id="btn-save" class="btn btn-outline-primary" disabled><i class="fa fa-save"></i> Save Results</button>
+              <button id="btn-reset" class="btn btn-light">Reset</button>
+            </div>
 
-      <div class="controls">
-        <button id="btn-capture">Capture & Analyze</button>
-        <button id="btn-toggle-audio">Toggle Mic Permission</button>
-        <button id="btn-save" disabled>Save Results (local)</button>
-        <button id="btn-reset">Reset</button>
-      </div>
-
-      <div id="results" class="card">
-        <h3>Analysis</h3>
-        <div id="score">No data yet</div>
-        <ul id="details"></ul>
+            <small class="text-muted d-block mt-2">Models should be placed in /static/models for best offline performance.</small>
+          </div>
+        </div>
       </div>
 
-      <div id="device" class="card">
-        <h3>Device Info</h3>
-        <pre id="device-info">—</pre>
+      <div class="col-lg-5">
+        <div class="card shadow-sm mb-3">
+          <div class="card-body">
+            <h5 class="card-title">Analysis</h5>
+            <div id="analysis-summary">
+              <div class="d-flex align-items-center gap-3">
+                <div class="display-6 fw-bold" id="score">—</div>
+                <div>
+                  <div id="shape" class="text-muted">—</div>
+                  <div id="qc" class="text-muted small">Frames: 0 | Stability: —</div>
+                </div>
+              </div>
+              <hr>
+              <ul id="details" class="list-unstyled small mb-0"></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h6 class="card-title">Local Storage</h6>
+            <p class="small text-muted">Saved metrics are stored locally in the server results directory and logged to the terminal. No images or audio are saved unless explicitly enabled.</p>
+            <div class="small text-muted">Session: <span id="session-id">—</span></div>
+            <div class="small text-muted">Last saved: <span id="last-saved">—</span></div>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   </main>
 
-  <footer>
-    <small>For local testing only. See README for privacy & model download instructions.</small>
+  <footer class="py-3 bg-white text-center small text-muted">
+    Built for local testing. Do not use on other people's devices without consent.
   </footer>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

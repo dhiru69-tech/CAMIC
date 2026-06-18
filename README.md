@@ -1,29 +1,44 @@
-# FaceShape Local Tester
+# FaceShape — Professional Local Tester
 
-This repository contains a local-first FaceShape tester: a small Flask backend and a static frontend that requests camera & microphone permissions, runs face landmark detection in the browser (face-api.js), computes a symmetry score and a simple face-shape heuristic, and optionally saves metrics to a local results directory.
+This repository provides a polished local-first FaceShape testing app. It runs a Flask backend (local-only) and a modern frontend that performs client-side face detection and symmetry scoring using face-api.js.
 
-Important:
-- This project is intended for local testing on your own devices only. Do NOT use it to collect biometric data from others without explicit, informed consent.
-- For fully offline usage, download face-api.js model weights into static/models/ (see instructions below).
+Key points:
+- Runs on localhost by default. Use `--local-only` to bind to 127.0.0.1.
+- Client-side detection: models (tiny face detector + 68-landmark) run in the browser. Place model weights in `static/models/` for offline use.
+- UI: polished Bootstrap-based interface. Clean consent flow and results presentation.
+- Data handling: by default only aggregated metrics (symmetry score, face shape label, timestamp, minimal device info) are sent to the server when you click "Save Results". No raw images or audio are saved unless you explicitly modify the code to do so.
+- Server logs: each saved result prints a concise log line to the terminal so you can monitor activity.
 
 Quick start:
-1. Clone the repo and create a venv:
-   python3 -m venv .venv && source .venv/bin/activate
-2. Install dependencies:
-   pip install -r requirements.txt
-3. (Optional but recommended) Download face-api.js model weights into static/models/ so the frontend can load models locally. Example:
-   git clone https://github.com/justadudewhohacks/face-api.js temp_models && mkdir -p static/models && cp -r temp_models/weights/* static/models/ && rm -rf temp_models
-4. Run the server:
-   python3 app.py --local-only --port 5000 --results-dir wl_results
-5. Open http://127.0.0.1:5000 in your browser, click Consent, allow camera & mic, then Capture & Analyze.
 
-Files added:
-- app.py — Flask backend, /save_results endpoint, /dashboard (local key: localkey)
-- static/ — frontend files (index.html, app.js, styles.css)
-- templates/dashboard.html — simple dashboard to view saved JSON
-- requirements.txt
+1. Clone and create venv
 
-Privacy notes:
-- Face detection and landmark extraction run entirely in the browser. Images do not leave your machine unless you explicitly click "Save Results" which only posts computed metrics (not full-resolution photos) to the local server.
-- Do not publish this server publicly.
+```bash
+git clone https://github.com/dhiru69-tech/CAMIC
+cd CAMIC
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
 
+2. (Optional) Download models locally for offline operation
+
+```bash
+# If you have git and internet:
+# git clone https://github.com/justadudewhohacks/face-api.js temp_models
+# mkdir -p static/models && cp -r temp_models/weights/* static/models/ && rm -rf temp_models
+```
+
+3. Run the server
+
+```bash
+python3 app.py --local-only --port 5000 --results-dir wl_results
+```
+
+4. Open http://127.0.0.1:5000 in a modern browser (Chrome, Edge, Firefox). Click Start (consent) and allow camera & mic when prompted. Click Capture & Analyze then Save Results to write metrics to the local server.
+
+Privacy & safety
+- Explicit consent: the browser will show permission prompts. These cannot/should not be bypassed. Always test on devices you own or have permission to use.
+- Local-only by default: do not publish this server publicly.
+- Saved metrics are local JSON files under `wl_results/` and a summary line is printed to the terminal when a result is saved.
+
+If you want additional features (improved scoring with alignment, charts, packaging into an executable, or stricter retention policies), tell me which feature to add next.
